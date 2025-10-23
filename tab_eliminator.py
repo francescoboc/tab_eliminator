@@ -4,22 +4,24 @@ from pdf2image import convert_from_path
 # parser degli argomenti
 parser = argparse.ArgumentParser(description="Rimuove le TAB da un PDF di spartito di basso")
 parser.add_argument("input_pdf", help="Percorso al PDF da elaborare")
-parser.add_argument("--margin", type=int, default=20, help="MARGINE del rettangolo di mascheramento (default=20)")
+parser.add_argument("--margin", type=int, default=20, help="Margine del rettangolo di mascheramento (default 20 px)")
+parser.add_argument("--crop", action="store_true", help="Se presente, taglia le TAB invece di coprirle")
 
 args = parser.parse_args()
 
 INPUT_PDF = args.input_pdf
 MARGIN_MASK = args.margin
+CROP_TABS = args.crop
 
 # parametri di rilevamento linee
-PEAK_PROMINENCE = 0.05
 MIN_GROUP_SPACING = 20
 MAX_GROUP_SPACING = 40
+PEAK_PROMINENCE = 0.05
 LINE_LENGTH_PERC = 0.7
 LINE_WIDTH_PX = 4
 
 # print(f"PDF da elaborare: {INPUT_PDF}")
-# print(f"MARGIN_MASK impostato a: {MARGIN_MASK}\n")
+print(f"Margine della maschera impostato a {MARGIN_MASK} px\n")
 
 # file e cartelle
 TMP_INPUT_DIR = "tmp_input_img"
@@ -48,7 +50,7 @@ for filename in sorted(os.listdir(TMP_INPUT_DIR)):
     # converti in grayscale e binario
     img = cv2.imread(path)
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    _, binary = cv2.threshold(gray, 200, 255, cv2.THRESH_BINARY_INV)  # linee nere su bianco
+    _, binary = cv2.threshold(gray, 200, 255, cv2.THRESH_BINARY_INV)
     
     # estrai solo linee orizzontali lunghe
     kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (int(img.shape[1]*LINE_LENGTH_PERC), 1))
@@ -81,15 +83,48 @@ for filename in sorted(os.listdir(TMP_INPUT_DIR)):
     if len(current_group) == 4:
         tab_groups.append(current_group)
 
-    # maschera le tablature
     if not tab_groups:
-        print("Nessun gruppo da 4 linee ravvicinate trovato (nessuna TAB rilevata)")
+        print("Nessun gruppo da 4 linee (TAB) trovato, prova a cambiare i parametri di rilevamento")
     else:
-        for g in tab_groups:
-            # print(f"Gruppo TAB trovato alle y={g}")
-            y_top = max(0, g[0] - MARGIN_MASK)
-            y_bottom = min(img.shape[0], g[-1] + MARGIN_MASK)
-            cv2.rectangle(img, (0, y_top), (img.shape[1], y_bottom), (255, 255, 255), -1)
+
+    # maschera le tablature
+        if not CROP_TABS:
+            for g in tab_groups:
+                # print(f"Gruppo TAB trovato alle y={g}")
+                y_top = max(0, g[0] - MARGIN_MASK)
+                y_bottom = min(img.shape[0], g[-1] + MARGIN_MASK)
+                cv2.rectangle(img, (0, y_top), (img.shape[1], y_bottom), (255, 255, 255), -1)
+
+    # rimuove le tablature "tirando su" il contenuto sottostante
+        else:
+            import numpy as np
+            height, width = img.shape[:2]
+        
+            # calcola intervalli da mantenere (non TAB)
+            keep_intervals = []
+            last_y = 0
+            for g in tab_groups:
+                y_top = max(0, g[0] - MARGIN_MASK)
+                y_bottom = min(height, g[-1] + MARGIN_MASK)
+                if y_top > last_y:
+                    keep_intervals.append((last_y, y_top))
+                last_y = y_bottom
+            if last_y < height:
+                keep_intervals.append((last_y, height))
+        
+            # nuova altezza
+            new_height = sum([b - t for t, b in keep_intervals])
+            new_img = np.zeros((new_height, width, 3), dtype=img.dtype)
+        
+            # copia porzioni non TAB
+            current_y = 0
+            for t, b in keep_intervals:
+                h = b - t
+                new_img[current_y:current_y+h, :, :] = img[t:b, :, :]
+                current_y += h
+        
+            # aggiorna immagine da salvare
+            img = new_img
 
     # salva immagine modificata
     out_path = os.path.join(TMP_OUTPUT_DIR, filename)
@@ -100,7 +135,7 @@ for filename in sorted(os.listdir(TMP_INPUT_DIR)):
 with open(OUTPUT_PDF, "wb") as f:
     f.write(img2pdf.convert(output_images_for_pdf))
 
-print(f"\nSalvato PDF senza TAB: {OUTPUT_PDF}")
+print(f"\nSalvato {OUTPUT_PDF}")
 
 # rimuovi file temporanei
 for filename in os.listdir(TMP_INPUT_DIR): 
