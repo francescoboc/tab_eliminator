@@ -1,5 +1,8 @@
-import os, sys, argparse, pdf2image, img2pdf
+import os, argparse, pdf2image, img2pdf
 from utils import *
+
+# TODO: aggiungi opzione --debug che salva le immagini blurred binarie con le linee trovate sovraimposte
+# riduci dimensione file di output in modalità raster
 
 # parser degli argomenti
 parser = argparse.ArgumentParser(description="Rimuove le TAB da un PDF di spartito di basso")
@@ -34,13 +37,16 @@ RECT_COLOR_RGB = (RECT_COLOR_BGR[2]/255, RECT_COLOR_BGR[1]/255, RECT_COLOR_BGR[0
 print(f"Margine della maschera impostato a {MARGIN_MASK} px\n")
 
 # file e cartelle
-TMP_INPUT_DIR = "tmp_input_img"
-TMP_OUTPUT_DIR = "tmp_output_img"
-OUTPUT_PDF = INPUT_PDF.replace(".pdf","") + " noTAB.pdf"
+TMP_INPUT_DIR = "temp_img/input_img"
+TMP_OUTPUT_DIR = "temp_img/output_img"
+
+# OUTPUT_PDF = INPUT_PDF.replace(".pdf","") + " noTAB.pdf"
+OUTPUT_PDF = f"output_pdf_notabs/{INPUT_PDF}"
 
 # crea cartelle
 os.makedirs(TMP_INPUT_DIR, exist_ok=True)
 os.makedirs(TMP_OUTPUT_DIR, exist_ok=True)
+os.makedirs("output_pdf_notabs", exist_ok=True)
 
 # controlla se il PDF di input è vettoriale
 IS_VECTOR = is_pdf_vector(INPUT_PDF)
@@ -52,10 +58,35 @@ if CROP_TABS and IS_VECTOR and not FORCE_RASTER:
 if IS_VECTOR:
     print("Conversione pagine da PDF vettoriale")
     pages = pdf2image.convert_from_path(INPUT_PDF, dpi=300)
+
 else:
     print("Estrazione pagine da PDF raster")
+
+    from PIL import Image
+    import io
+
     pdf = fitz.open(INPUT_PDF)
-    pages = [page.get_pixmap() for page in pdf]
+
+    pages = []
+    for i, page in enumerate(pdf):
+        img_list = page.get_images(full=True)
+
+        # se c'è esattamente 1 immagine nella pagina, estraila
+        if len(img_list) == 1:
+            xref = img_list[0][0]
+            base_image = pdf.extract_image(xref)
+            image_bytes = base_image["image"]
+            img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+
+        # altrimenti, renderizziamo e rasterizziamo
+        else:
+            # rasterizza a 150 DPI
+            zoom = 150 / 72
+            mat = fitz.Matrix(zoom, zoom)
+            img = page.get_pixmap(matrix=mat)
+
+        # appendi l'immagine alla lista di pagine da salvare
+        pages.append(img)
 
 # salva pagine singole in cartella temporanea
 for i, page in enumerate(pages):
