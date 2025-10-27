@@ -61,32 +61,7 @@ if IS_VECTOR:
 
 else:
     print("Estrazione pagine da PDF raster")
-
-    from PIL import Image
-    import io
-
-    pdf = fitz.open(INPUT_PDF)
-
-    pages = []
-    for i, page in enumerate(pdf):
-        img_list = page.get_images(full=True)
-
-        # se c'è esattamente 1 immagine nella pagina, estraila
-        if len(img_list) == 1:
-            xref = img_list[0][0]
-            base_image = pdf.extract_image(xref)
-            image_bytes = base_image["image"]
-            img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
-
-        # altrimenti, renderizziamo e rasterizziamo
-        else:
-            # rasterizza a 150 DPI
-            zoom = 150 / 72
-            mat = fitz.Matrix(zoom, zoom)
-            img = page.get_pixmap(matrix=mat)
-
-        # appendi l'immagine alla lista di pagine da salvare
-        pages.append(img)
+    pages = extract_pages_from_raster_pdf(INPUT_PDF)
 
 # salva pagine singole in cartella temporanea
 for i, page in enumerate(pages):

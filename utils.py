@@ -1,6 +1,35 @@
 import cv2, fitz
 import numpy as np
 
+# estrai pagine direttamente da PDF raster
+def extract_pages_from_raster_pdf(INPUT_PDF, DPI_RENDER=150):
+    from PIL import Image
+    import io
+
+    pdf = fitz.open(INPUT_PDF)
+
+    pages = []
+    for i, page in enumerate(pdf):
+        img_list = page.get_images(full=True)
+
+        # se c'è esattamente 1 immagine nella pagina, estraila
+        if len(img_list) == 1:
+            xref = img_list[0][0]
+            base_image = pdf.extract_image(xref)
+            image_bytes = base_image["image"]
+            img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+
+        # altrimenti, renderizza la pagina a DPI_RENDER
+        else:
+            zoom = DPI_RENDER / 72
+            mat = fitz.Matrix(zoom, zoom)
+            img = page.get_pixmap(matrix=mat)
+
+        # appendi l'immagine alla lista di pagine da salvare
+        pages.append(img)
+
+    return pages
+
 # controlla se il pdf è raster o vettoriale
 def is_pdf_vector(pdf_path):
     pdf = fitz.open(pdf_path)
