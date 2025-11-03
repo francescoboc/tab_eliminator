@@ -2,12 +2,11 @@ import os, argparse, pdf2image, img2pdf
 from utils import *
 
 # TODO: aggiungi opzione --debug che salva le immagini blurred binarie con le linee trovate sovraimposte
-# riduci dimensione file di output in modalità raster
 
 # parser degli argomenti
 parser = argparse.ArgumentParser(description="Rimuove le TAB da un PDF di spartito di basso")
 parser.add_argument("input_pdf", help="Percorso al PDF da elaborare")
-parser.add_argument("--margin", type=int, default=20, help="Margine del rettangolo di mascheramento (default 20 px)")
+parser.add_argument("--margin", type=int, default=25, help="Margine del rettangolo di mascheramento (default 20 px)")
 parser.add_argument("--perc", type=float, default=0.7, help="Percentuale di lunghezza minima delle linee (default 0.7)")
 parser.add_argument("--width", type=int, default=4, help="Spessore massimo delle linee (default 4 px)")
 parser.add_argument("--blur_width", type=int, default=30, help="Larghezza del gaussian blur per chiudere i gap dei numeri sulle TAB (default 30 px)")
@@ -40,13 +39,11 @@ print(f"Margine della maschera impostato a {MARGIN_MASK} px\n")
 TMP_INPUT_DIR = "temp_img/input_img"
 TMP_OUTPUT_DIR = "temp_img/output_img"
 
-# OUTPUT_PDF = INPUT_PDF.replace(".pdf","") + " noTAB.pdf"
-OUTPUT_PDF = f"output_pdf_notabs/{INPUT_PDF}"
+OUTPUT_PDF = INPUT_PDF.replace(".pdf","_noTAB.pdf")
 
 # crea cartelle
 os.makedirs(TMP_INPUT_DIR, exist_ok=True)
 os.makedirs(TMP_OUTPUT_DIR, exist_ok=True)
-os.makedirs("output_pdf_notabs", exist_ok=True)
 
 # controlla se il PDF di input è vettoriale
 IS_VECTOR = is_pdf_vector(INPUT_PDF)
