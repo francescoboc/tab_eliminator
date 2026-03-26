@@ -1,4 +1,4 @@
-import os, argparse, pdf2image, img2pdf
+import argparse, pdf2image, img2pdf
 from utils import *
 
 # TODO: aggiungi opzione --debug che salva le immagini blurred binarie con le linee trovate sovraimposte
@@ -8,12 +8,13 @@ parser = argparse.ArgumentParser(description="Rimuove le TAB da un PDF di sparti
 parser.add_argument("input_pdf", help="Percorso al PDF da elaborare")
 parser.add_argument("--margin", type=int, default=25, help="Margine del rettangolo di mascheramento (default 20 px)")
 parser.add_argument("--perc", type=float, default=0.7, help="Percentuale di lunghezza minima delle linee (default 0.7)")
-parser.add_argument("--width", type=int, default=4, help="Spessore massimo delle linee (default 4 px)")
+parser.add_argument("--width", type=int, default=5, help="Spessore massimo delle linee (default 5 px)")
 parser.add_argument("--blur_width", type=int, default=30, help="Larghezza del gaussian blur per chiudere i gap dei numeri sulle TAB (default 30 px)")
 parser.add_argument("--gap", type=float, default=1.8, help="Parametro per decidere come raggruppare le linee (default 1.8)")
 parser.add_argument("--raster", action="store_true", help="Se presente, forza l'output raster anche per un PDF vettoriale")
 parser.add_argument("--crop", action="store_true", help="Se presente, taglia via le TAB invece di coprirle (solo per output raster)")
 parser.add_argument("--bgr", type=int, nargs="+", default=(255, 255, 255), help="Colore in formato BGR dei rettangoli di riempimento (default 255 255 255)")
+parser.add_argument("--debug", action="store_true", help="Salva immagini di debug")# estrai linee orizzontali con opencv
 
 args = parser.parse_args()
 
@@ -25,6 +26,7 @@ BLUR_WIDTH = args.blur_width
 MAX_GAP_FACTOR = args.gap
 FORCE_RASTER = args.raster
 CROP_TABS = args.crop
+DEBUG = args.debug
 
 if len(args.bgr) != 3 or np.any(np.array(args.bgr)<0) or np.any(np.array(args.bgr)>255): 
     raise Exception("I parametri dell'opzione --bgr devono essere tre numeri interi tra 0 e 255")
@@ -70,17 +72,19 @@ print(f"Salvate {len(pages)} pagine\n")
 output_images_for_pdf = []
 tab_groups_per_page = []
 img_heights = []
+i=0
 
 for filename in sorted(os.listdir(TMP_INPUT_DIR)):
     print(f"Analizzo {filename}...")
     path = os.path.join(TMP_INPUT_DIR, filename)
     img = cv2.imread(path)
+    i+=1
 
     # estrai altezza della pagina in pixel
     img_heights.append(img.shape[0])  
 
     # estrai posizioni delle linee rilevate
-    line_positions = extract_lines(img, LINE_LENGTH_PERC, LINE_WIDTH_PX, BLUR_WIDTH)
+    line_positions = extract_lines(img, LINE_LENGTH_PERC, LINE_WIDTH_PX, BLUR_WIDTH, debug=DEBUG, page_idx=i)
 
     # raggruppa le linee in grouppi (pentagrammi e TABs)
     groups = group_lines(line_positions, MAX_GAP_FACTOR)

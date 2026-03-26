@@ -1,4 +1,4 @@
-import cv2, fitz
+import cv2, fitz, os
 import numpy as np
 
 # estrai pagine direttamente da PDF raster
@@ -18,6 +18,7 @@ def extract_pages_from_raster_pdf(INPUT_PDF, DPI_RENDER=150):
             base_image = pdf.extract_image(xref)
             image_bytes = base_image["image"]
             img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+            img = Image.fromarray(np.array(img))
 
         # altrimenti, renderizza la pagina a DPI_RENDER
         else:
@@ -42,7 +43,9 @@ def is_pdf_vector(pdf_path):
     return False
 
 # estrai linee orizzontali con opencv
-def extract_lines(img, LINE_LENGTH_PERC, LINE_WIDTH_PX, BLUR_WIDTH):
+def extract_lines(img, LINE_LENGTH_PERC, LINE_WIDTH_PX, BLUR_WIDTH,
+                  debug=False, debug_prefix="debug", page_idx=0):
+
     # converti in grayscale e binario
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     _, binary = cv2.threshold(gray, 200, 255, cv2.THRESH_BINARY_INV)
@@ -51,24 +54,48 @@ def extract_lines(img, LINE_LENGTH_PERC, LINE_WIDTH_PX, BLUR_WIDTH):
     kernel_blur = np.ones((1, BLUR_WIDTH), np.uint8)
     binary_blurred = cv2.dilate(binary, kernel_blur, iterations=1)
 
-    # cv2.imwrite("debug_binary_blurred.png", binary_blurred)
-        
-    # estrai solo linee orizzontali lunghe almeno LINE_LENGTH_PERC della pagina
-    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (int(img.shape[1]*LINE_LENGTH_PERC), 1))
+    # leggero blur verticale per evitare doppie detection (3 px)
+    binary_blurred = cv2.GaussianBlur(binary_blurred, (1, 3), 0)
+
+    # debug: salva immagini intermedie
+    if debug:
+        os.makedirs("debug", exist_ok=True)
+        # cv2.imwrite(f"debug/{debug_prefix}_p{page_idx}_binary_blur.png", binary_blurred)
+
+    # estrai linee orizzontali lunghe almeno LINE_LENGTH_PERC della pagina
+    kernel = cv2.getStructuringElement(
+        cv2.MORPH_RECT, (int(img.shape[1] * LINE_LENGTH_PERC), 1)
+    )
 
     horizontal_lines = cv2.morphologyEx(binary_blurred, cv2.MORPH_OPEN, kernel)
 
+    # if debug:
+    #     cv2.imwrite(f"debug/{debug_prefix}_p{page_idx}_lines_raw.png", horizontal_lines)
+
     # trova contorni
     contours, _ = cv2.findContours(horizontal_lines, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    
+
     # filtra solo linee con spessore <= LINE_WIDTH_PX
     filtered_y = []
+    debug_img = img.copy()
+
     for c in contours:
         x, y, w, h = cv2.boundingRect(c)
+        y_center = y + h // 2
         if h <= LINE_WIDTH_PX:
-            # salva centro verticale della linea
-            filtered_y.append(y + h//2)
-    
+            filtered_y.append(y_center)
+
+            # debug: disegna linea verde
+            if debug:
+                cv2.line(debug_img, (0, y_center), (img.shape[1], y_center), (0, 255, 0), 2)
+        else:
+            # debug: linee scartate in rosso
+            if debug:
+                cv2.line(debug_img, (0, y_center), (img.shape[1], y_center), (0, 0, 255), 2)
+
+    if debug:
+        cv2.imwrite(f"debug/{debug_prefix}_p{page_idx}_lines.png", debug_img)
+
     return sorted(filtered_y)
 
 # raggruppa automaticamente le linee orizzontali in gruppi in base alla distanza verticale media tra linee vicine
